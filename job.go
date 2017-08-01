@@ -162,7 +162,7 @@ func (job *Job) GetResult(key string) []byte {
 // GetResults returns all Outputs
 func (job *Job) GetResults() ([]*Output, error) {
 	if job.State != AllOutputReceived {
-		return nil, nil
+		return nil, fmt.Errorf("Can't get results before all outputs are received")
 	}
 	var result []*Output
 	iter := job.outputsDB.NewIterator(nil, nil)
@@ -172,6 +172,7 @@ func (job *Job) GetResults() ([]*Output, error) {
 			Value: iter.Value(),
 		}
 		result = append(result, output)
+		fmt.Println("One result")
 	}
 	iter.Release()
 	err := iter.Error()
@@ -187,7 +188,7 @@ func (job *Job) startOutputLogger() {
 	}
 
 	for result := range job.outChan {
-		//log.Printf("Outputlogger received %s -> %s", result.Key, string(result.Value))
+		fmt.Println("Outputlogger received %s -> %s", result.Key, string(result.Value))
 		err = job.outputsDB.Put([]byte(result.Key), result.Value, nil)
 	}
 	job.Complete <- true // indicates all results were received, won't block

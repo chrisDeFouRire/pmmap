@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -96,7 +97,36 @@ func allInputSent(w http.ResponseWriter, req *http.Request) {
 }
 
 func getJobOutputs(w http.ResponseWriter, req *http.Request) {
-
+	defer req.Body.Close()
+	id := mux.Vars(req)["id"]
+	job := Manager.getJob(id)
+	if job == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if job.State != AllOutputReceived {
+		w.WriteHeader(http.StatusExpectationFailed)
+		return
+	}
+	<-job.Complete
+	res, err := job.GetResults()
+	fmt.Println(res)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	result := make([]kvJSON, len(res))
+	for index, eachkv := range res {
+		var value interface{}
+		json.Unmarshal(eachkv.Value, &value)
+		result[index] = kvJSON{
+			Key:   eachkv.Key,
+			Value: value,
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
 }
 
 func deleteJob(w http.ResponseWriter, req *http.Request) {

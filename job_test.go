@@ -1,58 +1,14 @@
 package main
 
 import (
-	"log"
-	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"testing"
-	"time"
-
-	"github.com/gorilla/mux"
 )
-
-const (
-	localServerAddress = "localhost:7777"
-	webhook            = "/dowork"
-)
-
-func TestMain(m *testing.M) {
-	ready := make(chan bool)
-	go func() { // start a dummy server
-		srv := &http.Server{
-			Addr: localServerAddress,
-		}
-		r := mux.NewRouter()
-		r.HandleFunc(webhook+"/{key}", func(w http.ResponseWriter, req *http.Request) {
-			defer req.Body.Close()
-			if req.Method != "POST" {
-				log.Fatalf("Method %s should have been POST", req.Method)
-			}
-			if req.Header.Get("PMMAP-auth") != "testSecret!321" {
-				log.Fatalf("Incorrect secret key")
-			}
-			if mux.Vars(req)["key"][0:5] != "hello" {
-				log.Fatalf("Incorrect key")
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("world"))
-		})
-		r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-			log.Fatalf("Incorrect URL: %s", req.RequestURI)
-		})
-		http.Handle("/", r)
-		ready <- true
-		srv.ListenAndServe()
-	}()
-	<-ready
-	time.Sleep(5 * time.Millisecond)
-	os.Exit(m.Run())
-}
 
 // TestCreateJob tests that a job with overcapacity in both channel and goroutines
 // does finish as it should
-func TestCreateWithOneJob(t *testing.T) {
+func aTestCreateWithOneJob(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
 	job := CreateJob("testSecret!321", *u, 10)
 	job.Start(10)
@@ -89,7 +45,7 @@ const count = 200
 const concurrency = 2
 
 // TestCreateWithNJobs tests with N jobs (N = count)
-func TestCreateWithNjobs(t *testing.T) {
+func aTestCreateWithNjobs(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
 	job := CreateJob("testSecret!321", *u, count)
 	job.Start(10)
