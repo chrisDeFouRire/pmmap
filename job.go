@@ -14,7 +14,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-const dbPath = "./db/"
+var dbPath = "./db/"
 
 // Input is the data structure used as inputs to jobs
 type Input struct {
@@ -38,7 +38,6 @@ type Job struct {
 	inChan       chan (Input)    // channel where input is sent
 	outChan      chan (Output)   // channel where output is sent
 	wg           *sync.WaitGroup // to synchronize workers
-	dbPathRoot   string          // base folder where dbs are stored
 	inputsCount  int64           // counts inputs received
 	outputsCount int64           // counts outputs received
 	State        int64           // the state of the job
@@ -47,21 +46,20 @@ type Job struct {
 
 // CreateJob creates a new Job, ready to start
 // returns a job
-func CreateJob(dbPathRoot string, secret string, u url.URL, maxsize uint, concurrency int) *Job {
+func CreateJob(secret string, u url.URL, maxsize uint, concurrency int) *Job {
 	_id := uuid.NewV4().String()
 
 	// create the job instance
 	job := &Job{
-		ID:         _id,
-		secretKey:  secret,
-		workURL:    u,
-		inChan:     make(chan Input, maxsize),
-		outChan:    make(chan Output),
-		wg:         &sync.WaitGroup{},
-		Complete:   make(chan bool, 1),
-		State:      Created,
-		dbPathRoot: dbPathRoot,
-		outputsDB:  nil,
+		ID:        _id,
+		secretKey: secret,
+		workURL:   u,
+		inChan:    make(chan Input, maxsize),
+		outChan:   make(chan Output),
+		wg:        &sync.WaitGroup{},
+		Complete:  make(chan bool, 1),
+		State:     Created,
+		outputsDB: nil,
 	}
 	return job
 }
@@ -150,7 +148,7 @@ func (job *Job) GetResult(key string) []byte {
 // startOutputLogger receives all outputs
 func (job *Job) startOutputLogger() {
 	var err error
-	job.outputsDB, err = leveldb.OpenFile(job.dbPathRoot+"/job/"+job.ID, nil)
+	job.outputsDB, err = leveldb.OpenFile(dbPath+"/job/"+job.ID, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -189,7 +187,7 @@ func (job *Job) startOne() {
 		}
 		defer res.Body.Close()
 		// TODO handle each error case
-		if errResponse != nil {
+		if errResponse != nil || res.StatusCode > 400 {
 			input.RetryCount++
 			job.inChan <- input
 			// handle max retry count
