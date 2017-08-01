@@ -54,8 +54,8 @@ func TestMain(m *testing.M) {
 // does finish as it should
 func TestCreateWithOneJob(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
-	job := CreateJob("testSecret!321", *u, 10, 10)
-	job.Start()
+	job := CreateJob("testSecret!321", *u, 10)
+	job.Start(10)
 
 	if job.GetCompletionRate() != 0 {
 		t.Fatalf("Job completion rate should be 0, it is %f", job.GetCompletionRate())
@@ -91,8 +91,8 @@ const concurrency = 2
 // TestCreateWithNJobs tests with N jobs (N = count)
 func TestCreateWithNjobs(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
-	job := CreateJob("testSecret!321", *u, count, concurrency)
-	job.Start()
+	job := CreateJob("testSecret!321", *u, count)
+	job.Start(10)
 	if job.GetCompletionRate() != 0 {
 		t.Fatalf("Job completion rate should be 0, it is %f", job.GetCompletionRate())
 	}

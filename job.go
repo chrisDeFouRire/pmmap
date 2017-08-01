@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,7 +21,7 @@ var dbPath = "./db/"
 type Input struct {
 	Key        string
 	Value      []byte
-	RetryCount int
+	retryCount int
 }
 
 // Output encapsulates the output of jobs
@@ -44,9 +45,22 @@ type Job struct {
 	outputsDB    *leveldb.DB     // the storage for outputs
 }
 
+// MarshalJSON gives a JSON representation of a Job
+func (job *Job) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		ID           string `json:"id"`
+		InputsCount  int    `json:"inputs"`
+		OutputsCount int    `json:"outputs"`
+		URL          string `json:"url"`
+	}{job.ID,
+		int(job.GetInputsCount()),
+		int(job.GetOutputsCount()),
+		job.workURL.String()})
+}
+
 // CreateJob creates a new Job, ready to start
 // returns a job
-func CreateJob(secret string, u url.URL, maxsize uint, concurrency int) *Job {
+func CreateJob(secret string, u url.URL, maxsize uint) *Job {
 	_id := uuid.NewV4().String()
 
 	// create the job instance
@@ -65,7 +79,7 @@ func CreateJob(secret string, u url.URL, maxsize uint, concurrency int) *Job {
 }
 
 // Start working goroutines
-func (job *Job) Start() {
+func (job *Job) Start(concurrency int) {
 	// wait until all workers are done
 	go job.startCompletionWaiter()
 
@@ -145,6 +159,25 @@ func (job *Job) GetResult(key string) []byte {
 	return value
 }
 
+// GetResults returns all Outputs
+func (job *Job) GetResults() ([]*Output, error) {
+	if job.State != AllOutputReceived {
+		return nil, nil
+	}
+	var result []*Output
+	iter := job.outputsDB.NewIterator(nil, nil)
+	for iter.Next() {
+		output := &Output{
+			Key:   string(iter.Key()),
+			Value: iter.Value(),
+		}
+		result = append(result, output)
+	}
+	iter.Release()
+	err := iter.Error()
+	return result, err
+}
+
 // startOutputLogger receives all outputs
 func (job *Job) startOutputLogger() {
 	var err error
@@ -181,20 +214,31 @@ func (job *Job) startOne() {
 		}
 		req.Header.Add("PMMAP-job", job.ID)
 		req.Header.Add("PMMAP-auth", job.secretKey)
+		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
 		if errResponse != nil {
 			log.Print(errResponse)
+			return
 		}
 		defer res.Body.Close()
 		// TODO handle each error case
-		if errResponse != nil || res.StatusCode > 400 {
-			input.RetryCount++
-			job.inChan <- input
-			// handle max retry count
+		if res.StatusCode == 200 {
+			reply.Value, _ = ioutil.ReadAll(res.Body)
+			log.Printf("Received from server (key %s): %s", reply.Key, string(reply.Value))
+			job.outChan <- reply
+			return
 		}
-		reply.Value, _ = ioutil.ReadAll(res.Body)
-		log.Printf("Received from server (key %s): %s", reply.Key, string(reply.Value))
-		job.outChan <- reply
+		if errResponse != nil || res.StatusCode >= 500 {
+			input.retryCount++
+			job.inChan <- input
+			if input.retryCount > 5 {
+				log.Print("Bailing out after 5 attempts")
+				return
+			}
+		} else {
+			log.Printf("Backend replied with status = %d", res.StatusCode)
+			return
+		}
 	}
 }
 
