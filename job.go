@@ -191,6 +191,7 @@ func (job *Job) startCompletionWaiter() {
 // startWorkers starts workers, each in his goroutine
 func (job *Job) startWorkers(concurrency int) {
 	job.wg.Add(concurrency)
+	// TODO add rampup
 	for count := 0; count < concurrency; count++ {
 		go func() {
 			job.startOne()
