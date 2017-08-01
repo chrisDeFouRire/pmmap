@@ -12,4 +12,7 @@ const (
 
 	// AllOutputReceived means all outputs have been received
 	AllOutputReceived
+
+	// ErrorState indicates this job is in error, no more interaction should occur
+	ErrorState
 )

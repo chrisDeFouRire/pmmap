@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/satori/go.uuid"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 const dbPath = "./db/"
@@ -30,49 +31,51 @@ type Output struct {
 
 // Job encapsulate a single instance of a job
 type Job struct {
-	ID        string  // the job ID
-	secretKey string  // the job secret key
-	workURL   url.URL // the URL we send work to
-	inChan    chan (Input)
-	outChan   chan (Output)
-	wg        *sync.WaitGroup
-	Complete  chan (bool)
-
-	inputsCount  int64
-	outputsCount int64
-	State        int64
-
-	Results map[string][]byte
+	ID           string          // the job ID
+	Complete     chan (bool)     // true is sent upon completion
+	secretKey    string          // the job secret key (sent to webhooks)
+	workURL      url.URL         // the URL radix we send work to
+	inChan       chan (Input)    // channel where input is sent
+	outChan      chan (Output)   // channel where output is sent
+	wg           *sync.WaitGroup // to synchronize workers
+	dbPathRoot   string          // base folder where dbs are stored
+	inputsCount  int64           // counts inputs received
+	outputsCount int64           // counts outputs received
+	State        int64           // the state of the job
+	outputsDB    *leveldb.DB     // the storage for outputs
 }
 
 // CreateJob creates a new Job, ready to start
 // returns a job
-func CreateJob(secret string, u url.URL, maxsize uint, concurrency int) *Job {
+func CreateJob(dbPathRoot string, secret string, u url.URL, maxsize uint, concurrency int) *Job {
 	_id := uuid.NewV4().String()
 
 	// create the job instance
 	job := &Job{
-		ID:        _id,
-		secretKey: secret,
-		workURL:   u,
-		inChan:    make(chan Input, maxsize),
-		outChan:   make(chan Output),
-		wg:        &sync.WaitGroup{},
-		Complete:  make(chan bool, 1),
-		State:     Created,
-		Results:   make(map[string][]byte),
+		ID:         _id,
+		secretKey:  secret,
+		workURL:    u,
+		inChan:     make(chan Input, maxsize),
+		outChan:    make(chan Output),
+		wg:         &sync.WaitGroup{},
+		Complete:   make(chan bool, 1),
+		State:      Created,
+		dbPathRoot: dbPathRoot,
+		outputsDB:  nil,
 	}
+	return job
+}
 
+// Start working goroutines
+func (job *Job) Start() {
 	// wait until all workers are done
-	job.startCompletionWaiter()
+	go job.startCompletionWaiter()
 
 	// start Output receiver
-	job.startOutputLogger()
+	go job.startOutputLogger()
 
 	// start all workers
 	job.startWorkers(concurrency)
-
-	return job
 }
 
 // AddInputsToJob adds more than one input to the job
@@ -100,13 +103,16 @@ func (job *Job) AddToJob(key string, value []byte) error {
 
 // AllInputsWereSent is called when all inputs have been sent
 // no more input can be sent
+// the job can't become "complete" until this function is called
 func (job *Job) AllInputsWereSent() error {
 	state := atomic.LoadInt64(&job.State)
 	if state != ReceivingInputs {
+		close(job.inChan)
+		atomic.StoreInt64(&job.State, ErrorState)
 		return fmt.Errorf("Wrong state transition")
 	}
 	atomic.StoreInt64(&job.State, AllInputReceived)
-	close(job.inChan)
+	close(job.inChan) // close will trigger each worker goroutine's exit
 	return nil
 }
 
@@ -129,16 +135,32 @@ func (job *Job) GetCompletionRate() float64 {
 	return float64(job.GetOutputsCount()) / float64(inputs)
 }
 
+// GetResult returns the result for a key after all outputs are received, or nil if not found
+func (job *Job) GetResult(key string) []byte {
+	if job.State != AllOutputReceived {
+		return nil
+	}
+	value, err := job.outputsDB.Get([]byte(key), nil)
+	if err != nil {
+		return nil
+	}
+	return value
+}
+
 // startOutputLogger receives all outputs
 func (job *Job) startOutputLogger() {
-	go func() {
-		for result := range job.outChan {
-			log.Printf("Outputlogger received %s -> %s", result.Key, string(result.Value))
-			job.Results[result.Key] = result.Value
-		}
-		job.Complete <- true // indicates all results were received
-		close(job.Complete)
-	}()
+	var err error
+	job.outputsDB, err = leveldb.OpenFile(job.dbPathRoot+"/job/"+job.ID, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for result := range job.outChan {
+		//log.Printf("Outputlogger received %s -> %s", result.Key, string(result.Value))
+		err = job.outputsDB.Put([]byte(result.Key), result.Value, nil)
+	}
+	job.Complete <- true // indicates all results were received, won't block
+	close(job.Complete)
 }
 
 // startOne starts a single worker, doesn't create goroutine
@@ -180,12 +202,10 @@ func (job *Job) startOne() {
 
 // startCompletionWaiter runs a goroutine that's waiting until completion
 func (job *Job) startCompletionWaiter() {
-	go func() {
-		job.wg.Wait()
-		atomic.StoreInt64(&job.State, AllOutputReceived)
+	job.wg.Wait()
+	atomic.StoreInt64(&job.State, AllOutputReceived)
 
-		close(job.outChan) // don't let anyone write to it anymore
-	}()
+	close(job.outChan) // don't let anyone write to it anymore
 }
 
 // startWorkers starts workers, each in his goroutine

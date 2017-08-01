@@ -54,7 +54,8 @@ func TestMain(m *testing.M) {
 // does finish as it should
 func TestCreateWithOneJob(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
-	job := CreateJob("testSecret!321", *u, 10, 10)
+	job := CreateJob("./db", "testSecret!321", *u, 10, 10)
+	job.Start()
 
 	if job.GetCompletionRate() != 0 {
 		t.Fatalf("Job completion rate should be 0, it is %f", job.GetCompletionRate())
@@ -79,22 +80,19 @@ func TestCreateWithOneJob(t *testing.T) {
 	if job.GetOutputsCount() != 1 {
 		t.Fatalf("there should be 1 output, there are %d", job.GetOutputsCount())
 	}
-	if len(job.Results) != 1 {
-		t.Fatalf("there should be 1 result")
-	}
-	if string(job.Results["hello"]) != "world" {
+	if string(job.GetResult("hello")) != "world" {
 		t.Fatalf("result should been returned")
 	}
 }
 
-const count = 100
+const count = 12000
 const concurrency = 2
 
 // TestCreateWithNJobs tests with N jobs (N = count)
 func TestCreateWithNjobs(t *testing.T) {
 	u, _ := url.Parse("http://" + localServerAddress + webhook)
-	job := CreateJob("testSecret!321", *u, count, concurrency)
-
+	job := CreateJob("./db", "testSecret!321", *u, count, concurrency)
+	job.Start()
 	if job.GetCompletionRate() != 0 {
 		t.Fatalf("Job completion rate should be 0, it is %f", job.GetCompletionRate())
 	}
@@ -120,10 +118,7 @@ func TestCreateWithNjobs(t *testing.T) {
 	if job.GetOutputsCount() != count {
 		t.Fatalf("there should be 1 output, there are %d", job.GetOutputsCount())
 	}
-	if len(job.Results) != count {
-		t.Fatalf("there should be 1 result")
-	}
-	if string(job.Results["hello0"]) != "world" && string(job.Results["hello"+strconv.Itoa(count-1)]) != "world" {
-		t.Fatalf("result should been returned")
+	if string(job.GetResult("hello0")) != "world" && string(job.GetResult("hello"+strconv.Itoa(count-1))) != "world" {
+		t.Fatalf("result should be returned")
 	}
 }
