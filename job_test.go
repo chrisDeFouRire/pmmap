@@ -45,7 +45,7 @@ func TestMain(m *testing.M) {
 		srv.ListenAndServe()
 	}()
 	<-ready
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	os.Exit(m.Run())
 }
 
@@ -67,9 +67,7 @@ func TestCreateJob(t *testing.T) {
 
 	job.AddToJob("hello", []byte("world"))
 	job.AllInputsWereSent()
-	log.Print("waiting for completion")
 	<-job.Complete
-	log.Print("completion OK")
 
 	if job.GetCompletionRate() != 1.0 {
 		t.Fatalf("Job completion rate should be 1, it is %f", job.GetCompletionRate())

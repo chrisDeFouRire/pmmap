@@ -136,9 +136,8 @@ func (job *Job) startOutputLogger() {
 			log.Printf("Outputlogger received %s -> %s", result.Key, string(result.Value))
 			job.Results[result.Key] = result.Value
 		}
-		job.Complete <- true // will not block
+		job.Complete <- true // indicates all results were received
 		close(job.Complete)
-
 	}()
 }
 
@@ -185,7 +184,7 @@ func (job *Job) startCompletionWaiter() {
 		job.wg.Wait()
 		atomic.StoreInt64(&job.State, AllOutputReceived)
 
-		close(job.outChan)
+		close(job.outChan) // don't let anyone write to it anymore
 	}()
 }
 
