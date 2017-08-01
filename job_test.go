@@ -1,36 +1,59 @@
 package main
 
 import (
-	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/gorilla/mux"
+)
+
+const (
+	localServerAddress = "localhost:7777"
+	webhook            = "/dowork"
 )
 
 func TestMain(m *testing.M) {
+	ready := make(chan bool)
 	go func() { // start a dummy server
 		srv := &http.Server{
-			Addr: "localhost:7777",
+			Addr: localServerAddress,
 		}
-		http.HandleFunc("/dowork", func(w http.ResponseWriter, req *http.Request) {
+		r := mux.NewRouter()
+		r.HandleFunc(webhook+"/{key}", func(w http.ResponseWriter, req *http.Request) {
 			defer req.Body.Close()
 			if req.Method != "POST" {
 				log.Fatalf("Method %s should have been POST", req.Method)
 			}
-			io.Copy(w, req.Body)
+			if req.Header.Get("PMMAP-auth") != "testSecret!321" {
+				log.Fatalf("Incorrect secret key")
+			}
+			if mux.Vars(req)["key"] != "hello" {
+				log.Fatalf("Incorrect key")
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("world"))
 		})
+		r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+			log.Fatalf("Incorrect URL: %s", req.RequestURI)
+		})
+		http.Handle("/", r)
+		ready <- true
 		srv.ListenAndServe()
 	}()
+	<-ready
+	time.Sleep(50 * time.Millisecond)
 	os.Exit(m.Run())
 }
 
 // TestCreateJob tests that a job with overcapacity in both channel and goroutines
 // does finish as it should
 func TestCreateJob(t *testing.T) {
-	u, _ := url.Parse("http://localhost:7777/dowork")
-	job := CreateJob(*u, 10, 10)
+	u, _ := url.Parse("http://" + localServerAddress + webhook)
+	job := CreateJob("testSecret!321", *u, 10, 10)
 
 	if job.GetCompletionRate() != 0 {
 		t.Fatalf("Job completion rate should be 0, it is %f", job.GetCompletionRate())
@@ -44,7 +67,9 @@ func TestCreateJob(t *testing.T) {
 
 	job.AddToJob("hello", []byte("world"))
 	job.AllInputsWereSent()
+	log.Print("waiting for completion")
 	<-job.Complete
+	log.Print("completion OK")
 
 	if job.GetCompletionRate() != 1.0 {
 		t.Fatalf("Job completion rate should be 1, it is %f", job.GetCompletionRate())
@@ -55,7 +80,10 @@ func TestCreateJob(t *testing.T) {
 	if job.GetOutputsCount() != 1 {
 		t.Fatalf("there should be 1 output, there are %d", job.GetOutputsCount())
 	}
-	if string(job.Results["hello"]) != "put the result here" {
+	if len(job.Results) != 1 {
+		t.Fatalf("there should be 1 result")
+	}
+	if string(job.Results["hello"]) != "world" {
 		t.Fatalf("result should been returned")
 	}
 }

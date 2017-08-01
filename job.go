@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -27,12 +30,13 @@ type Output struct {
 
 // Job encapsulate a single instance of a job
 type Job struct {
-	ID       string  // the job ID
-	workURL  url.URL // the URL we send work to
-	inChan   chan (Input)
-	outChan  chan (Output)
-	wg       *sync.WaitGroup
-	Complete chan (bool)
+	ID        string  // the job ID
+	secretKey string  // the job secret key
+	workURL   url.URL // the URL we send work to
+	inChan    chan (Input)
+	outChan   chan (Output)
+	wg        *sync.WaitGroup
+	Complete  chan (bool)
 
 	inputsCount  int64
 	outputsCount int64
@@ -43,19 +47,20 @@ type Job struct {
 
 // CreateJob creates a new Job, ready to start
 // returns a job
-func CreateJob(u url.URL, maxsize uint, concurrency int) *Job {
+func CreateJob(secret string, u url.URL, maxsize uint, concurrency int) *Job {
 	_id := uuid.NewV4().String()
 
 	// create the job instance
 	job := &Job{
-		ID:       _id,
-		workURL:  u,
-		inChan:   make(chan Input, maxsize),
-		outChan:  make(chan Output),
-		wg:       &sync.WaitGroup{},
-		Complete: make(chan bool, 1),
-		State:    Created,
-		Results:  make(map[string][]byte),
+		ID:        _id,
+		secretKey: secret,
+		workURL:   u,
+		inChan:    make(chan Input, maxsize),
+		outChan:   make(chan Output),
+		wg:        &sync.WaitGroup{},
+		Complete:  make(chan bool, 1),
+		State:     Created,
+		Results:   make(map[string][]byte),
 	}
 
 	// wait until all workers are done
@@ -128,8 +133,12 @@ func (job *Job) GetCompletionRate() float64 {
 func (job *Job) startOutputLogger() {
 	go func() {
 		for result := range job.outChan {
+			log.Printf("Outputlogger received %s -> %s", result.Key, string(result.Value))
 			job.Results[result.Key] = result.Value
 		}
+		job.Complete <- true // will not block
+		close(job.Complete)
+
 	}()
 }
 
@@ -144,13 +153,28 @@ func (job *Job) startOne() {
 		// make http request to backend URL
 		reply := Output{}
 		reply.Key = input.Key
-		reply.Value = []byte("put the result here")
-		var err error
-		if err != nil {
+
+		client := &http.Client{}
+		reader := bytes.NewReader(input.Value)
+		req, errRequest := http.NewRequest("POST", job.workURL.String()+"/"+input.Key, reader)
+		if errRequest != nil {
+			log.Print(errRequest)
+		}
+		req.Header.Add("PMMAP-job", job.ID)
+		req.Header.Add("PMMAP-auth", job.secretKey)
+		res, errResponse := client.Do(req)
+		if errResponse != nil {
+			log.Print(errResponse)
+		}
+		defer res.Body.Close()
+		// TODO handle each error case
+		if errResponse != nil {
 			input.RetryCount++
 			job.inChan <- input
 			// handle max retry count
 		}
+		reply.Value, _ = ioutil.ReadAll(res.Body)
+		log.Printf("Received from server (key %s): %s", reply.Key, string(reply.Value))
 		job.outChan <- reply
 	}
 }
@@ -161,8 +185,6 @@ func (job *Job) startCompletionWaiter() {
 		job.wg.Wait()
 		atomic.StoreInt64(&job.State, AllOutputReceived)
 
-		job.Complete <- true // will not block
-		close(job.Complete)
 		close(job.outChan)
 	}()
 }
