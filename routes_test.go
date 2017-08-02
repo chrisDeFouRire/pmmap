@@ -29,8 +29,8 @@ func TestMain(m *testing.M) {
 			if req.Method != "POST" {
 				log.Fatalf("Method %s should have been POST", req.Method)
 			}
-			if req.Header.Get("PMMAP-auth") != "testSecret" {
-				log.Fatalf("Incorrect secret key")
+			if req.Header.Get("PMMAP-auth") != Secret {
+				log.Fatalf("Incorrect secret key %s vs. %s", req.Header.Get("PMMAP-auth"), Secret)
 			}
 			if mux.Vars(req)["key"][0:5] != "hello" {
 				log.Fatalf("Incorrect key")
@@ -56,7 +56,7 @@ func TestIntegration(t *testing.T) {
 		URL         string `json:"url"`
 		Maxsize     int    `json:"maxsize"`
 		Concurrency int    `json:"concurrency"`
-	}{"testSecret", "localhost:7777/work", 10, 10}
+	}{Secret, "http://localhost:7777/dowork", 10, 10}
 	b, _ := json.Marshal(req)
 	create, createerr := http.Post("http://localhost:8080/job", "application/json", bytes.NewReader(b))
 	if createerr != nil {
@@ -74,7 +74,7 @@ func TestIntegration(t *testing.T) {
 	var onearray = make([]interface{}, 1)
 	onearray[0] = one
 	b, _ = json.Marshal(onearray)
-	putreq, _ := http.NewRequest("PUT", "http://localhost:8080/job/"+jobid, bytes.NewReader(b))
+	putreq, _ := http.NewRequest("PUT", "http://localhost:8080/job/"+jobid+"/input", bytes.NewReader(b))
 	putreq.Header.Add("Content-Type", "application/json")
 	client := &http.Client{}
 	client.Do(putreq)

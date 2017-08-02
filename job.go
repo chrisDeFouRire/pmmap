@@ -92,11 +92,13 @@ func (job *Job) Start(concurrency int) {
 
 // AddInputsToJob adds more than one input to the job
 func (job *Job) AddInputsToJob(inputs []Input) error {
+	log.Print("add inputs")
 	if !job.canReceiveInput() {
 		return fmt.Errorf("Job %s can't receive more inputs", job.ID)
 	}
 	job.receiving(len(inputs))
 	for _, eachJob := range inputs {
+		log.Print("Sending one")
 		job.inChan <- eachJob
 	}
 	return nil
@@ -217,6 +219,7 @@ func (job *Job) startOne() {
 		req.Header.Add("PMMAP-auth", job.secretKey)
 		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
+		log.Println("Request sent")
 		if errResponse != nil {
 			log.Print(errResponse)
 			return

@@ -90,6 +90,7 @@ func allInputSent(w http.ResponseWriter, req *http.Request) {
 	if err := job.AllInputsWereSent(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
