@@ -92,13 +92,11 @@ func (job *Job) Start(concurrency int) {
 
 // AddInputsToJob adds more than one input to the job
 func (job *Job) AddInputsToJob(inputs []Input) error {
-	log.Print("add inputs")
 	if !job.canReceiveInput() {
 		return fmt.Errorf("Job %s can't receive more inputs", job.ID)
 	}
 	job.receiving(len(inputs))
 	for _, eachJob := range inputs {
-		log.Print("Sending one")
 		job.inChan <- eachJob
 	}
 	return nil
@@ -174,7 +172,6 @@ func (job *Job) GetResults() ([]*Output, error) {
 			Value: iter.Value(),
 		}
 		result = append(result, output)
-		fmt.Println("One result")
 	}
 	iter.Release()
 	err := iter.Error()
@@ -190,7 +187,6 @@ func (job *Job) startOutputLogger() {
 	}
 
 	for result := range job.outChan {
-		fmt.Println("Outputlogger received %s -> %s", result.Key, string(result.Value))
 		err = job.outputsDB.Put([]byte(result.Key), result.Value, nil)
 	}
 	job.Complete <- true // indicates all results were received, won't block
@@ -219,7 +215,6 @@ func (job *Job) startOne() {
 		req.Header.Add("PMMAP-auth", job.secretKey)
 		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
-		log.Println("Request sent")
 		if errResponse != nil {
 			log.Print(errResponse)
 			return
@@ -228,7 +223,6 @@ func (job *Job) startOne() {
 		// TODO handle each error case
 		if res.StatusCode == 200 {
 			reply.Value, _ = ioutil.ReadAll(res.Body)
-			log.Printf("Received from server (key %s): %s", reply.Key, string(reply.Value))
 			job.outChan <- reply
 			return
 		}

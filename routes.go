@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 
@@ -111,7 +110,6 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 	}
 	<-job.Complete
 	res, err := job.GetResults()
-	fmt.Println(res)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))

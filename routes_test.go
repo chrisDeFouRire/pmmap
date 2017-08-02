@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,7 +36,6 @@ func TestMain(m *testing.M) {
 			}
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("\"world (" + mux.Vars(req)["key"] + ")\""))
-			fmt.Print("Backend received")
 		})
 		r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 			log.Fatalf("Incorrect URL: %s", req.RequestURI)
@@ -51,6 +49,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestIntegration(t *testing.T) {
+	// Step 1: create job
 	req := struct {
 		Secret      string `json:"secret"`
 		URL         string `json:"url"`
@@ -62,33 +61,61 @@ func TestIntegration(t *testing.T) {
 	if createerr != nil {
 		t.Fatalf("error at creation %v", createerr)
 	}
-	fmt.Println("Created")
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create job should have returned code 201-Created")
+	}
+
 	var m map[string]interface{}
 	json.NewDecoder(create.Body).Decode(&m)
 	jobid := m["id"].(string)
+	if m["inputs"].(float64) != 0 {
+		t.Fatalf("Job should report 0 inputs")
+	}
+	if m["outputs"].(float64) != 0 {
+		t.Fatalf("Job should report 0 outpus")
+	}
+	if m["url"].(string) != "http://localhost:7777/dowork" {
+		t.Fatalf("Job should report correct url")
+	}
 
+	// step 2: send input
 	one := struct {
 		Key   string      `json:"key"`
 		Value interface{} `json:"value"`
-	}{"hello23", ""}
+	}{"hello23", "testhello23"}
 	var onearray = make([]interface{}, 1)
 	onearray[0] = one
 	b, _ = json.Marshal(onearray)
 	putreq, _ := http.NewRequest("PUT", "http://localhost:8080/job/"+jobid+"/input", bytes.NewReader(b))
 	putreq.Header.Add("Content-Type", "application/json")
 	client := &http.Client{}
-	client.Do(putreq)
-	fmt.Println("Input added")
+	putres, puterr := client.Do(putreq)
+	if puterr != nil {
+		log.Println("Error while PUTting input")
+		log.Fatal(puterr)
+	}
+	if putres.StatusCode != http.StatusCreated {
+		log.Fatalf("Putting input should reply with 201-Created instead of %d", putres.StatusCode)
+	}
 
+	// step 3: signal the input set is complete
 	http.Post("http://localhost:8080/job/"+jobid+"/complete", "application/json", nil)
-	fmt.Println("Job complete")
 
-	res, _ := http.Get("http://localhost:8080/job/" + jobid + "/output")
-	var r interface{}
-
+	// step 4: get results
+	res, reserr := http.Get("http://localhost:8080/job/" + jobid + "/output")
+	if reserr != nil {
+		log.Print("Error while getting results")
+		log.Fatal(reserr)
+	}
+	var r []map[string]interface{}
 	decodeerr := json.NewDecoder(res.Body).Decode(&r)
 	if decodeerr != nil {
 		log.Fatal(decodeerr)
 	}
-	fmt.Printf("output %v", r)
+	if len(r) != 1 {
+		log.Fatalf("There should have been only one result, there were %d", len(r))
+	}
+	if r[0]["value"] != "world (hello23)" || r[0]["key"] != "hello23" {
+		log.Fatalf("Wrong result received")
+	}
 }
