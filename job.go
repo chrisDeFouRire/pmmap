@@ -108,7 +108,6 @@ func (job *Job) AddToJob(key string, value []byte) error {
 		return fmt.Errorf("Job %s can't receive more inputs", job.ID)
 	}
 	job.receiving(1)
-	atomic.AddInt64(&job.inputsCount, 1)
 	job.inChan <- Input{Key: key, Value: value}
 	return nil
 }
@@ -187,6 +186,7 @@ func (job *Job) startOutputLogger() {
 	}
 
 	for result := range job.outChan {
+		atomic.AddInt64(&job.outputsCount, int64(1))
 		err = job.outputsDB.Put([]byte(result.Key), result.Value, nil)
 	}
 	job.Complete <- true // indicates all results were received, won't block
@@ -224,18 +224,18 @@ func (job *Job) startOne() {
 		if res.StatusCode == 200 {
 			reply.Value, _ = ioutil.ReadAll(res.Body)
 			job.outChan <- reply
-			return
-		}
-		if errResponse != nil || res.StatusCode >= 500 {
-			input.retryCount++
-			job.inChan <- input
-			if input.retryCount > 5 {
-				log.Print("Bailing out after 5 attempts")
+		} else {
+			if errResponse != nil || res.StatusCode >= 500 {
+				input.retryCount++
+				job.inChan <- input
+				if input.retryCount > 5 {
+					log.Print("Bailing out after 5 attempts")
+					return
+				}
+			} else {
+				log.Printf("Backend replied with status = %d", res.StatusCode)
 				return
 			}
-		} else {
-			log.Printf("Backend replied with status = %d", res.StatusCode)
-			return
 		}
 	}
 }
@@ -273,5 +273,5 @@ func (job *Job) receiving(count int) {
 		return
 	}
 	atomic.StoreInt64(&job.State, ReceivingInputs)
-	atomic.AddInt64(&job.outputsCount, int64(count))
+	atomic.AddInt64(&job.inputsCount, int64(count))
 }
