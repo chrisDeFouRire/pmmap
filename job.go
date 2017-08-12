@@ -104,12 +104,9 @@ func (job *Job) AddInputsToJob(inputs []Input) error {
 
 // AddToJob adds an input to the job
 func (job *Job) AddToJob(key string, value []byte) error {
-	if !job.canReceiveInput() {
-		return fmt.Errorf("Job %s can't receive more inputs", job.ID)
-	}
-	job.receiving(1)
-	job.inChan <- Input{Key: key, Value: value}
-	return nil
+	array := make([]Input, 1)
+	array[0] = Input{Key: key, Value: value}
+	return job.AddInputsToJob(array)
 }
 
 // AllInputsWereSent is called when all inputs have been sent
