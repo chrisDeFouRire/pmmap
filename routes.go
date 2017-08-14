@@ -127,6 +127,7 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 			Value: value,
 		}
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(result)
 }
@@ -136,6 +137,7 @@ func deleteJob(w http.ResponseWriter, req *http.Request) {
 	id := mux.Vars(req)["id"]
 	Manager.delJob(id)
 	// TODO this will leak if the job isn't finished yet
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
 

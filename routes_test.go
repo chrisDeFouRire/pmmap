@@ -17,8 +17,13 @@ const (
 	webhook            = "/dowork"
 )
 
+// TestMain is run for every tests. It starts the PMmap server and a dummy test backend
 func TestMain(m *testing.M) {
-	go func() { // start a dummy server
+	// run the PMmap server
+	go main()
+
+	// start a dummy test backend
+	go func() {
 		srv := &http.Server{
 			Addr: "localhost:7777",
 		}
@@ -26,7 +31,10 @@ func TestMain(m *testing.M) {
 		r.HandleFunc(webhook+"/{key}", func(w http.ResponseWriter, req *http.Request) {
 			defer req.Body.Close()
 			if req.Method != "POST" {
-				log.Fatalf("Method %s should have been POST", req.Method)
+				log.Fatalf("Method %s should have been POST instead of ", req.Method)
+			}
+			if req.Header.Get("Content-Type") != "application/json" {
+				log.Fatal("Backend should be called with application/json content type instead of ", req.Header.Get("Content-Type"))
 			}
 			if req.Header.Get("PMMAP-auth") != Secret {
 				log.Fatalf("Incorrect secret key %s vs. %s", req.Header.Get("PMMAP-auth"), Secret)
@@ -43,7 +51,7 @@ func TestMain(m *testing.M) {
 		http.Handle("/", r)
 		srv.ListenAndServe()
 	}()
-	go main()
+
 	time.Sleep(time.Millisecond * 50)
 	os.Exit(m.Run())
 }
@@ -64,7 +72,9 @@ func TestIntegration(t *testing.T) {
 	if create.StatusCode != http.StatusCreated {
 		t.Fatalf("create job should have returned code 201-Created")
 	}
-
+	if create.Header.Get("Content-Type") != "application/json" {
+		t.Fatal("Create endpoint should reply with application/json instead of ", create.Header.Get("Content-Type"))
+	}
 	var m map[string]interface{}
 	json.NewDecoder(create.Body).Decode(&m)
 	jobid := m["id"].(string)
@@ -97,33 +107,45 @@ func TestIntegration(t *testing.T) {
 	putres, puterr := client.Do(putreq)
 	if puterr != nil {
 		log.Println("Error while PUTting input")
-		log.Fatal(puterr)
+		t.Fatal(puterr)
 	}
 	if putres.StatusCode != http.StatusCreated {
-		log.Fatalf("Putting input should reply with 201-Created instead of %d", putres.StatusCode)
+		t.Fatalf("Putting input should reply with 201-Created instead of %d", putres.StatusCode)
+	}
+	if putres.Header.Get("Content-Type") != "application/json" {
+		t.Fatal("PUT input endpoint should reply with application/json instead of ", putres.Header.Get("Content-Type"))
 	}
 
 	// step 3: signal the input set is complete
-	http.Post("http://localhost:8080/job/"+jobid+"/complete", "application/json", nil)
-
+	complete, complerr := http.Post("http://localhost:8080/job/"+jobid+"/complete", "application/json", nil)
+	if complerr != nil || complete.StatusCode != http.StatusOK {
+		t.Fatal("POST complete should reply with 200 ", complerr)
+	}
+	if complete.Header.Get("Content-Type") != "application/json" {
+		t.Fatal("POST complete should reply with application/json instead of ", complete.Header.Get("Content-Type"))
+	}
 	// step 4: get results
 	res, reserr := http.Get("http://localhost:8080/job/" + jobid + "/output")
 	if reserr != nil || res.StatusCode != http.StatusOK {
 		log.Print("Error while getting results")
-		log.Fatal(reserr)
+		t.Fatal(reserr)
 	}
+	if res.Header.Get("Content-Type") != "application/json" {
+		t.Fatal("POST output should reply with application/json instead of ", res.Header.Get("Content-Type"))
+	}
+
 	var r []map[string]interface{}
 	decodeerr := json.NewDecoder(res.Body).Decode(&r)
 	if decodeerr != nil {
-		log.Fatal(decodeerr)
+		t.Fatal(decodeerr)
 	}
 	if len(r) != 2 {
-		log.Fatalf("There should have been two results, there were %d", len(r))
+		t.Fatalf("There should have been two results, there were %d", len(r))
 	}
 	if r[0]["value"] != "world (hello23)" || r[0]["key"] != "hello23" {
-		log.Fatal("Wrong result[0] received ", r[0])
+		t.Fatal("Wrong result[0] received ", r[0])
 	}
 	if r[1]["value"] != "world (hello24)" || r[1]["key"] != "hello24" {
-		log.Fatal("Wrong result[1] received ", r[1])
+		t.Fatal("Wrong result[1] received ", r[1])
 	}
 }

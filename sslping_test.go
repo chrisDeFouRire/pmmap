@@ -12,7 +12,7 @@ const (
 	sslping = "https://sslping.com/api/v1/check"
 )
 
-func TestSSLPing(t *testing.T) {
+func _TestSSLPing(t *testing.T) {
 	// Step 1: create job
 	req := struct {
 		Secret      string `json:"secret"`
@@ -98,6 +98,4 @@ func TestSSLPing(t *testing.T) {
 	if r[1].Key != "sslping.com" {
 		log.Fatal("Wrong result[1] received ", r[1])
 	}
-	_b, _ := json.Marshal(r)
-	log.Print(string(_b))
 }

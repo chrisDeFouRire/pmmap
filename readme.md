@@ -33,6 +33,10 @@ To satisfy KISS (keep it simple, stupid), PMmap does the following:
 
 # The API
 
+The API is not secured, there's no authentication: anyone can call every route. So don't expose PMmap's port to the internet.
+
+The server listens to `localhost:8080` only. Use docker to deploy it.
+
 ## `POST /job` Creates a job 
 
 To create a job, you simply send a JSON to this endpoint.
