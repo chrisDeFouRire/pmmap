@@ -7,18 +7,18 @@ Because it's easier to implement a webhook to perform a single task, and delegat
 PMmap is a micro service. You often have to manage "large" batches, like sending 300 emails or crawling 7000 servers.
 Now you can delegate this job to PMmap. Send it the work to do and the desired concurrency, and it will handle completion monitoring and results gathering for you.
 
-You send inputs to it (like user ids or server URLs) and for each of these, it calls a webhook on your system to perform the task, gathers results and waits for completion of the whole batch, plus you tell PMmap to run at most `n` jobs concurrently.
+You send inputs to it (like user ids or server URLs) and for each of these, it calls a webhook on your system to perform the task, gathers results and waits for completion of the whole batch, plus you can tell PMmap to run at most `n` calls to the webhook concurrently.
 
 **It's not a job queue**
 
 Job queues solve only half of the problem:
 
-- you don't get your results back
-- you can't monitor batch completion
+- you don't get results back
+- you can't monitor job completion
 
-There's more suited for continuous processes (create thumbnail images) that batches (process this batch of data and give me the results when it's done).
+Queues are more suited for continuous processes ("create thumbnail images") than batches ("process this batch of data and give me all the results when it's done").
 
-PMmap is more like a map-reduce job, but without the reduce job. Your webhook implements the map.
+PMmap is more like a map-reduce job, but without the reduce job. Your webhook implements the map function.
 
 **Why Poor Man's?**
 
