@@ -33,9 +33,18 @@ To satisfy KISS (keep it simple, stupid), PMmap does the following:
 
 # The API
 
-The API is not secured, there's no authentication: anyone can call every route. So don't expose PMmap's port to the internet.
+The PMmap server is not secured, there's no authentication: anyone can call any route. So don't expose PMmap's port to the internet.
 
-The server listens to `localhost:8080` only. Use docker to deploy it.
+The server listens to `localhost:8080` only. 
+
+[Use docker to deploy it](https://hub.docker.com/r/tlsproxy/pmmap/).
+
+```
+docker pull tlsproxy/pmmap
+docker run -d --restart=always --name pmmap tlsproxy/pmmap
+```
+
+Then link the `pmmap` container and use `http://pmmap:8080` for your HTTP requests, or else expose its 8080 port (`-p 8080:8080`).
 
 ## `POST /job` Creates a job 
 
