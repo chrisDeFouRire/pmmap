@@ -104,9 +104,11 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	// TODO handle optional nowait, skip, limit options
 	<-job.Complete
 	if job.State != AllOutputReceived {
 		w.WriteHeader(http.StatusExpectationFailed)
+		json.NewEncoder(w).Encode(job)
 		return
 	}
 	res, err := job.GetResults()
@@ -130,7 +132,11 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 }
 
 func deleteJob(w http.ResponseWriter, req *http.Request) {
-
+	defer req.Body.Close()
+	id := mux.Vars(req)["id"]
+	Manager.delJob(id)
+	// TODO this will leak if the job isn't finished yet
+	w.WriteHeader(http.StatusOK)
 }
 
 func routes() *mux.Router {
@@ -143,4 +149,7 @@ func routes() *mux.Router {
 	routes.HandleFunc("/job/{id}/complete", allInputSent).Methods("POST")
 	routes.HandleFunc("/job/{id}", deleteJob).Methods("DELETE")
 	return routes
+
+	// TODO need a route to get more status information
+	// TODO need a way to signal if there's a problem with the backend
 }
