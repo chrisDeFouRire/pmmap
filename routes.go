@@ -104,11 +104,11 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	<-job.Complete
 	if job.State != AllOutputReceived {
 		w.WriteHeader(http.StatusExpectationFailed)
 		return
 	}
-	<-job.Complete
 	res, err := job.GetResults()
 
 	if err != nil {

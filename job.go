@@ -215,7 +215,8 @@ func (job *Job) startOne() {
 		req.Header.Add("PMMAP-auth", job.secretKey)
 		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
-		if errResponse != nil {
+		if errResponse != nil || res.StatusCode != http.StatusOK {
+			log.Printf("Backend replied %d", res.StatusCode)
 			log.Print(errResponse)
 			return
 		}
