@@ -163,9 +163,12 @@ func (job *Job) GetResults() ([]*Output, error) {
 	var result []*Output
 	iter := job.outputsDB.NewIterator(nil, nil)
 	for iter.Next() {
+		value := iter.Value()
+		dst := make([]byte, len(value))
+		copy(dst, value)
 		output := &Output{
 			Key:   string(iter.Key()),
-			Value: iter.Value(),
+			Value: dst,
 		}
 		result = append(result, output)
 	}

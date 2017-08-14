@@ -83,8 +83,13 @@ func TestIntegration(t *testing.T) {
 		Key   string      `json:"key"`
 		Value interface{} `json:"value"`
 	}{"hello23", "testhello23"}
-	var onearray = make([]interface{}, 1)
+	two := struct {
+		Key   string      `json:"key"`
+		Value interface{} `json:"value"`
+	}{"hello24", "testhello24"}
+	var onearray = make([]interface{}, 2)
 	onearray[0] = one
+	onearray[1] = two
 	b, _ = json.Marshal(onearray)
 	putreq, _ := http.NewRequest("PUT", "http://localhost:8080/job/"+jobid+"/input", bytes.NewReader(b))
 	putreq.Header.Add("Content-Type", "application/json")
@@ -112,10 +117,13 @@ func TestIntegration(t *testing.T) {
 	if decodeerr != nil {
 		log.Fatal(decodeerr)
 	}
-	if len(r) != 1 {
-		log.Fatalf("There should have been only one result, there were %d", len(r))
+	if len(r) != 2 {
+		log.Fatalf("There should have been two results, there were %d", len(r))
 	}
 	if r[0]["value"] != "world (hello23)" || r[0]["key"] != "hello23" {
-		log.Fatalf("Wrong result received")
+		log.Fatalf("Wrong result[0] received")
+	}
+	if r[1]["value"] != "world (hello24)" || r[1]["key"] != "hello24" {
+		log.Fatalf("Wrong result[0] received")
 	}
 }

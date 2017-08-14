@@ -110,6 +110,7 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 	}
 	<-job.Complete
 	res, err := job.GetResults()
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
