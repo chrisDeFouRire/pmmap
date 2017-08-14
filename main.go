@@ -1,12 +1,16 @@
 package main
 
 import (
+	"log"
 	"net/http"
 )
 
-// Secret is sent back in webhooks to ensure origin
-var Secret = "This is an extremely bad secret"
+var (
+	// ListenAddress specifies the address to listen to
+	ListenAddress = "localhost:8080"
+)
 
 func main() {
-	panic(http.ListenAndServe("localhost:8080", routes()))
+	log.Print("Starting PMmap on ", ListenAddress)
+	panic(http.ListenAndServe(ListenAddress, routes()))
 }

@@ -15,6 +15,7 @@ import (
 const (
 	localServerAddress = "localhost:7777"
 	webhook            = "/dowork"
+	Secret             = "This is an extremely bad secret"
 )
 
 // TestMain is run for every tests. It starts the PMmap server and a dummy test backend

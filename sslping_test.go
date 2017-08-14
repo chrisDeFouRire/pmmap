@@ -73,7 +73,9 @@ func _TestSSLPing(t *testing.T) {
 	// step 4: get results
 	res, reserr := http.Get("http://localhost:8080/job/" + jobid + "/output")
 	if reserr != nil || res.StatusCode != http.StatusOK {
-		log.Printf("Error while getting results (status= %d)", res.StatusCode)
+		if res != nil {
+			log.Print("Error while getting results, status= ", res.StatusCode)
+		}
 		log.Fatal(reserr)
 	}
 	var r []struct {

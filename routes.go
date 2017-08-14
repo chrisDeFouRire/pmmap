@@ -10,6 +10,7 @@ import (
 
 type createJobJSON struct {
 	URL         string `json:"url"`
+	Secret      string `json:"secret"`
 	Maxsize     uint   `json:"maxsize"`
 	Concurrency int    `json:"concurrency"`
 }
@@ -26,7 +27,7 @@ func createJob(w http.ResponseWriter, req *http.Request) {
 	if err := json.NewDecoder(req.Body).Decode(&query); err == nil {
 		if u, err := url.Parse(query.URL); err == nil {
 
-			job := CreateJob(Secret, *u, query.Maxsize)
+			job := CreateJob(query.Secret, *u, query.Maxsize)
 			job.Start(query.Concurrency)
 			Manager.addJob(job)
 
