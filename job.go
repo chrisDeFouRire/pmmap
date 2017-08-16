@@ -52,7 +52,8 @@ func (job *Job) MarshalJSON() ([]byte, error) {
 		InputsCount  int    `json:"inputs"`
 		OutputsCount int    `json:"outputs"`
 		URL          string `json:"url"`
-	}{job.ID,
+	}{
+		job.ID,
 		int(job.GetInputsCount()),
 		int(job.GetOutputsCount()),
 		job.workURL.String()})
@@ -216,11 +217,13 @@ func (job *Job) startOne() {
 		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
 		if errResponse != nil || res.StatusCode != http.StatusOK {
-			log.Print(errResponse)
-			if res != nil {
-				log.Print("Backend replied ", res.StatusCode)
+			if errResponse != nil {
+				log.Print(errResponse)
 			}
-			return
+			if res != nil {
+				log.Printf("Backend replied %d for %s", res.StatusCode, input.Key)
+			}
+			continue
 		}
 		defer res.Body.Close()
 		// TODO handle each error case
@@ -232,12 +235,12 @@ func (job *Job) startOne() {
 				input.retryCount++
 				job.inChan <- input
 				if input.retryCount > 5 {
-					log.Print("Bailing out after 5 attempts")
-					return
+					log.Printf("Bailing out after 5 attempts for %s", input.Key)
+					continue
 				}
 			} else {
 				log.Printf("Backend replied with status = %d", res.StatusCode)
-				return
+				continue
 			}
 		}
 	}
@@ -256,9 +259,7 @@ func (job *Job) startWorkers(concurrency int) {
 	job.wg.Add(concurrency)
 	// TODO add rampup
 	for count := 0; count < concurrency; count++ {
-		go func() {
-			job.startOne()
-		}()
+		go job.startOne()
 	}
 }
 
