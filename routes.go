@@ -106,7 +106,10 @@ func getJobOutputs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// TODO handle optional nowait, skip, limit options
-	<-job.Complete
+	if job.GetInputsCount() != job.GetOutputsCount() {
+		// wait only if we haven't received all outputs
+		<-job.Complete
+	}
 	if job.State != AllOutputReceived {
 		w.WriteHeader(http.StatusExpectationFailed)
 		json.NewEncoder(w).Encode(job)

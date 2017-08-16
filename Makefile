@@ -11,5 +11,8 @@ docker: pmmap.docker
 	docker push tlsproxy/pmmap
 
 clean:
-	rm pmmap.docker
+	rm -f pmmap.docker
 	docker images | grep '<none>' | awk '{ print $3 }' | xargs docker rmi
+
+cleaner: clean
+	rm -rf db

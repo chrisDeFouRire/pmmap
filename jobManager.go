@@ -11,9 +11,7 @@ type manager struct {
 }
 
 // Manager is the entry point to jobs
-var Manager = manager{
-	jobs: make(map[string]*Job),
-}
+var Manager = manager{jobs: make(map[string]*Job)}
 
 func (man *manager) addJob(job *Job) {
 	man.Lock()
