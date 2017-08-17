@@ -28,6 +28,7 @@ type Input struct {
 type Output struct {
 	Key   string
 	Value []byte
+	// TODO add error field
 }
 
 // Job encapsulate a single instance of a job
@@ -61,6 +62,7 @@ func (job *Job) MarshalJSON() ([]byte, error) {
 
 // CreateJob creates a new Job, ready to start
 // returns a job
+// TODO add backend timeout
 func CreateJob(secret string, u url.URL, maxsize uint) *Job {
 	_id := uuid.NewV4().String()
 
@@ -188,6 +190,8 @@ func (job *Job) startOutputLogger() {
 
 	for result := range job.outChan {
 		atomic.AddInt64(&job.outputsCount, int64(1))
+		// TODO use a key prefix to differenciate from errors
+		// TODO store errors too
 		err = job.outputsDB.Put([]byte(result.Key), result.Value, nil)
 	}
 	job.Complete <- true // indicates all results were received, won't block
@@ -223,6 +227,7 @@ func (job *Job) startOne() {
 			if res != nil {
 				log.Printf("Backend replied %d for %s", res.StatusCode, input.Key)
 			}
+			// TODO return errors alongside results
 			continue
 		}
 		defer res.Body.Close()
@@ -236,10 +241,12 @@ func (job *Job) startOne() {
 				job.inChan <- input
 				if input.retryCount > 5 {
 					log.Printf("Bailing out after 5 attempts for %s", input.Key)
+					// TODO return errors alongside results
 					continue
 				}
 			} else {
 				log.Printf("Backend replied with status = %d", res.StatusCode)
+				// TODO return errors alongside results
 				continue
 			}
 		}
