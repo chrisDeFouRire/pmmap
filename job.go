@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/satori/go.uuid"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -17,28 +18,36 @@ import (
 
 var dbPath = "./db/"
 
+// OutputError is set on Output when an unrecuperable error has occurred
+type OutputError struct {
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Body       string `json:"body"`
+}
+
 // Input is the data structure used as inputs to jobs
 type Input struct {
 	Key        string
-	Value      []byte
+	Value      []byte // TODO use interface{} instead?
 	retryCount int
 }
 
 // Output encapsulates the output of jobs
 type Output struct {
 	Key   string
-	Value []byte
-	// TODO add error field
+	Value []byte // TODO use interface{} instead?
+	Error *OutputError
 }
 
 // Job encapsulate a single instance of a job
 type Job struct {
+	sync.Mutex
 	ID           string          // the job ID
-	Complete     chan (bool)     // true is sent upon completion
+	Complete     chan bool       // true is sent upon completion
 	secretKey    string          // the job secret key (sent to webhooks)
 	workURL      url.URL         // the URL radix we send work to
-	inChan       chan (Input)    // channel where input is sent
-	outChan      chan (Output)   // channel where output is sent
+	inChan       chan Input      // channel where input is sent
+	outChan      chan Output     // channel where output is sent
 	wg           *sync.WaitGroup // to synchronize workers
 	inputsCount  int64           // counts inputs received
 	outputsCount int64           // counts outputs received
@@ -48,6 +57,8 @@ type Job struct {
 
 // MarshalJSON gives a JSON representation of a Job
 func (job *Job) MarshalJSON() ([]byte, error) {
+	job.Lock()
+	defer job.Unlock()
 	return json.Marshal(&struct {
 		ID           string `json:"id"`
 		InputsCount  int    `json:"inputs"`
@@ -95,6 +106,9 @@ func (job *Job) Start(concurrency int) {
 
 // AddInputsToJob adds more than one input to the job
 func (job *Job) AddInputsToJob(inputs []Input) error {
+	job.Lock()
+	defer job.Unlock()
+
 	if !job.canReceiveInput() {
 		return fmt.Errorf("Job %s can't receive more inputs", job.ID)
 	}
@@ -206,49 +220,63 @@ func (job *Job) startOne() {
 		if !ok { // no more work to do
 			break
 		}
-		// make http request to backend URL
-		reply := Output{}
-		reply.Key = input.Key
 
-		client := &http.Client{}
-		reader := bytes.NewReader(input.Value)
-		req, errRequest := http.NewRequest("POST", job.workURL.String()+"/"+input.Key, reader)
+		// make http request to backend URL
+		reply := Output{Key: input.Key}
+
+		client := &http.Client{
+			Timeout: time.Second * 30, // TODO job param
+		}
+		bodyreader := bytes.NewReader(input.Value)
+		req, errRequest := http.NewRequest("POST", job.workURL.String()+"/"+input.Key, bodyreader)
 		if errRequest != nil {
-			log.Print(errRequest)
+			error := &OutputError{
+				Message: "Can't create POST request to the backend endpoint",
+			}
+			reply.Error = error
+			job.outChan <- reply
+			continue
 		}
 		req.Header.Add("PMMAP-job", job.ID)
 		req.Header.Add("PMMAP-auth", job.secretKey)
 		req.Header.Add("Content-Type", "application/json")
 		res, errResponse := client.Do(req)
-		if errResponse != nil || res.StatusCode != http.StatusOK {
-			if errResponse != nil {
-				log.Print(errResponse)
-			}
-			if res != nil {
-				log.Printf("Backend replied %d for %s", res.StatusCode, input.Key)
-			}
-			// TODO return errors alongside results
+		if errResponse != nil {
+			input.retryCount++
+			job.inChan <- input // TODO exponential backup
 			continue
 		}
 		defer res.Body.Close()
-		// TODO handle each error case
-		if res.StatusCode == 200 {
-			reply.Value, _ = ioutil.ReadAll(res.Body)
-			job.outChan <- reply
-		} else {
-			if errResponse != nil || res.StatusCode >= 500 {
-				input.retryCount++
-				job.inChan <- input
-				if input.retryCount > 5 {
-					log.Printf("Bailing out after 5 attempts for %s", input.Key)
-					// TODO return errors alongside results
-					continue
+
+		if res.StatusCode == http.StatusOK {
+			var readerr error
+			reply.Value, readerr = ioutil.ReadAll(res.Body)
+			if readerr != nil {
+				error := &OutputError{
+					Message: "Can't read body from response",
 				}
-			} else {
-				log.Printf("Backend replied with status = %d", res.StatusCode)
-				// TODO return errors alongside results
+				reply.Error = error
+				job.outChan <- reply
 				continue
 			}
+			reply.Error = nil
+			job.outChan <- reply
+			continue
+		}
+		if res.StatusCode >= 500 || input.retryCount < 5 { // retryable error // TODO job param max retries
+			input.retryCount++
+			job.inChan <- input
+		} else { // fatal error
+			error := &OutputError{}
+			error.StatusCode = res.StatusCode
+			if b, berr := ioutil.ReadAll(res.Body); berr == nil {
+				error.Body = string(b)
+			}
+			log.Printf("Backend replied %d for %s", res.StatusCode, input.Key)
+
+			reply.Error = error
+			reply.Value = nil
+			job.outChan <- reply
 		}
 	}
 }
@@ -270,7 +298,7 @@ func (job *Job) startWorkers(concurrency int) {
 	}
 }
 
-// canReceiveInput tell whether it's OK to accept new inputs
+// canReceiveInput tells whether it's OK to accept new inputs
 func (job *Job) canReceiveInput() bool {
 	state := atomic.LoadInt64(&job.State)
 	return state == Created || state == ReceivingInputs
